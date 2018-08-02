@@ -9,19 +9,11 @@ new lines very well, I also want to explore how to import the message from an ex
 
 #in each row, there are 6 pixels whose least significant bit of their r,g,b values will
 # correlate to the bit combination of an ascii char
-#it will be the first pixel in the row (index[0]) followed by the pixel 10 over (index[10]) and so on, the last
-#pixel at (index[50]) only the r value is used
 
 
-
-#for every row in image, extract a single 7 bit ascii character
-#for every pixel in the row, check the least significant bit of a single color in this order, [r,g,b,r,g,b,r,...]
-#use these least significant bits to make a single 7 bit char, and it makes a string
 def encodeMessage(image_filename, hidden_message ):
     img = Image.open( image_filename )
-    print(img.format, img.size, img.mode)
-    img.show()
-
+    print hidden_message
     #img[0] is column
     #img[1] is row
 
@@ -34,16 +26,16 @@ def encodeMessage(image_filename, hidden_message ):
         #converts the message into a lengthy string consisting of only the binary equivalent
         binary_string = ""
         for i in range(len(hidden_message)):
-            binary_string += bin(ord(hidden_message[i]))[2:]
+            bin_to_add = bin(ord(hidden_message[i]))[2:]
+            while len(bin_to_add) < 7: #some characters reduce to fewer than 7 bits, this throws off the encoding
+                bin_to_add = '0' + bin_to_add
+            binary_string += bin_to_add
         #be sure to add the null termination char
         binary_string += '0000000'
-        print binary_string
 
 
         k = 0 # k is to keep track of position in the message
 
-        print type(ord(binary_string[0]))
-        print ord(binary_string[0])
 
 
         #for every row, go through each pixel, and cycle through each color in order R, G, B. Modify the least significant
@@ -56,19 +48,15 @@ def encodeMessage(image_filename, hidden_message ):
                         if p == 0:
                             specific_bit = (ord(binary_string[k]) & int('0000001', 2)) | (pixel_map[i,j][0] - pixel_map[i,j][0] % 2)
                             pixel_map[i,j] = (specific_bit, pixel_map[i, j][1], pixel_map[i,j][2])
-                            pixelColor = 'g'
                         elif p == 1:
                             specific_bit = (ord(binary_string[k]) & int('0000001', 2)) | (pixel_map[i,j][1] - pixel_map[i,j][1] % 2)
                             pixel_map[i,j] = (pixel_map[i, j][0], specific_bit, pixel_map[i, j][2])
-                            pixelColor = 'b'
                         elif p == 2:
                             specific_bit = (ord(binary_string[k]) & int('0000001', 2)) | (pixel_map[i,j][2] - pixel_map[i,j][2] % 2)
                             pixel_map[i,j] = (pixel_map[i, j][0], pixel_map[i,j][1], specific_bit)
-                            pixelColor = 'r'
                         k += 1
 
 
-        img.show()
         img.save('encoded.bmp')
         img.close()
     else:
@@ -77,8 +65,6 @@ def encodeMessage(image_filename, hidden_message ):
 
 def decodeMessage( image_filename ):
     img = Image.open( image_filename )
-    print(img.format, img.size, img.mode)
-    img.show()
 
     # extracting the hidden message
     if img.size[0] * img.size[1] >= 5:  #needs to be at least 2 chr worth of bitys available, 14/3=4.66 so need at leaft 5 pixels total
@@ -89,14 +75,14 @@ def decodeMessage( image_filename ):
         #if not, decode into a normal chr and add to a string
 
 
-        revealed_message = ''
+        revealed_line = ''
         specific_bit = 0
         bit_count = 0
         time_to_break = False
         pixel_map = img.load()
 
 
-
+        output_file = open("hidden_message_revealed.txt", 'w')
 
         for j in range(img.size[1]):
             if time_to_break != True:
@@ -107,24 +93,24 @@ def decodeMessage( image_filename ):
                             bit_count += 1
                             if k == 0:
                                 specific_bit += int('0000001', 2) & (pixel_map[i, j][0])
-                                pixel_color = 'g'
                             elif k == 1:
                                 specific_bit += int('0000001', 2) & (pixel_map[i, j][1])
-                                pixel_color = 'b'
                             elif k == 2:
                                 specific_bit += int('0000001', 2) & (pixel_map[i, j][2])
-                                pixel_color = 'r'
                             if bit_count == 7:
                                 if specific_bit == int('0000000', 2):#if the most recently extracted chr is the null termination
-                                    print "Should break here"
-                                    print revealed_message
+                                    output_file.write(revealed_line)
                                     time_to_break = True
                                     break
+                                elif specific_bit == int('0001010', 2): #if the extracted char is the command LF, newline
+                                    print revealed_line
+                                    output_file.write(revealed_line + '\n')
+                                    revealed_line = ''
+                                    specific_bit = 0
+                                    bit_count = 0
                                 else:
-                                    print "Extracted a 7bit chr?"
-                                    print specific_bit
                                     print chr(specific_bit)
-                                    revealed_message += chr(specific_bit)
+                                    revealed_line += chr(specific_bit)
                                     specific_bit = 0
                                     bit_count = 0
                                     continue
@@ -133,19 +119,30 @@ def decodeMessage( image_filename ):
             else:
                 break
 
-        #it's actually only checking one color per pixel in the RGB rotation, oh well
-
     img.close()
+    output_file.close()
 
 
 
 #main function
-selection = input("Enter 1 to encode, 2 to decode (decoding must be an .bmp that this program made) ")
+print "Enter 1 to encode a single line message into the image (type it yourself now, don't copy/paste any EOL)"
+print "Enter 2 to encode a .txt file into the image (must be only 7 bit ascii, otherwise unexpected behavior)"
+print "Enter 3 to decode (decoding must be an .bmp that this program made)"
+selection = input("Selection: ")
 
 if selection == 1:
-    filename = input("Enter the filepath for the image you wish to encode a message into (result will be saved as a .bmp file): ")
-    message = input("Enter the message you wish to encode in the image (needs to be fewer characters than the image height in pixels ")
+    filename = input("Enter the filepath of the image to encode a message into (result will be saved as a .bmp file): ")
+    message = input("Enter the message you wish to encode in the image:")
     encodeMessage(filename, message)
 elif selection == 2:
+    filename = input("Enter the filepath of the image to encode a message into (result will be saved as a .bmp file): ")
+    text_doc = input("Enter the filepath of the .txt file")
+    with open(text_doc, 'r') as my_file:
+        message = my_file.read().replace('\n', chr(int('0001010', 2)))
+    my_file.close()
+    encodeMessage(filename, message)
+
+
+elif selection == 3:
     filename = input("Enter the filepath of the image that has a coded message in it (must be a .bmp file)")
     decodeMessage(filename)
